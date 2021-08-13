@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
-'''
+#!/usr/bin/env python3
+"""
   Copyright (C) 2016 Bastille Networks
 
   This program is free software: you can redistribute it and/or modify
@@ -14,23 +14,30 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
+
+from nrf24_base import Nrf24Base
 
 
-import time, logging
-from lib import common
+class Nrf24ContinuousToneTest(Nrf24Base):
+    def __init__(self):
+        super(Nrf24ContinuousToneTest, self).__init__('./nrf24-continuous-tone-test.py')
 
-# Parse command line arguments and initialize the radio
-common.init_args('./nrf24-continuous-tone-test.py')
-common.parse_and_init()
+        # Parse command line arguments and initialize the radio
+        self._init_args('./nrf24-continuous-tone-test.py')
+        self.parse_and_init()
 
-# Set the initial channel
-common.radio.set_channel(common.channels[0])
+    def execute(self):
+        # Set the initial channel
+        self.radio.set_channel(self.channels[0])
 
-# Put the radio in continuous tone test mode
-common.radio.enter_tone_test_mode()
+        # Put the radio in continuous tone test mode
+        self.radio.enter_tone_test_mode()
 
-# Run indefinitely
-while True:
-  pass
+        # Run indefinitely
+        while True:
+            pass
 
+
+if __name__ == '__main__':
+    Nrf24ContinuousToneTest().execute()

@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
-'''
+#!/usr/bin/env python3
+"""
   Copyright (C) 2016 Bastille Networks
 
   This program is free software: you can redistribute it and/or modify
@@ -13,87 +13,80 @@
   GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+import logging
+import time
+
+from nrf24_base import Nrf24Base
 
 
-import time, logging
-from lib import common
+class Nrf24Sniffer(Nrf24Base):
 
-# Parse command line arguments and initialize the radio
-common.init_args('./nrf24-sniffer.py')
-common.parser.add_argument('-a', '--address', type=str, help='Address to sniff, following as it changes channels', required=True)
-common.parser.add_argument('-t', '--timeout', type=float, help='Channel timeout, in milliseconds', default=100)
-common.parser.add_argument('-k', '--ack_timeout', type=int, help='ACK timeout in microseconds, accepts [250,4000], step 250', default=250)
-common.parser.add_argument('-r', '--retries', type=int, help='Auto retry limit, accepts [0,15]', default=1, choices=xrange(0, 16), metavar='RETRIES')
-common.parser.add_argument('-p', '--ping_payload', type=str, help='Ping payload, ex 0F:0F:0F:0F', default='0F:0F:0F:0F', metavar='PING_PAYLOAD')
-common.parse_and_init()
+    def __init__(self):
+        super(Nrf24Sniffer, self).__init__('./nrf24-sniffer.py')
 
-# Parse the address
-address = common.args.address.replace(':', '').decode('hex')[::-1][:5]
-address_string = ':'.join('{:02X}'.format(ord(b)) for b in address[::-1])
-if len(address) < 2:
-  raise Exception('Invalid address: {0}'.format(common.args.address))
+        # Parse command line arguments and initialize the radio
+        self.enable_address()
+        self.enable_timeout()
+        self.enable_ack_timeout()
+        self.enable_retries()
+        self.enable_ping_payload()
 
-# Put the radio in sniffer mode (ESB w/o auto ACKs)
-common.radio.enter_sniffer_mode(address)
+        self.parse_and_init()
 
-# Convert channel timeout from milliseconds to seconds
-timeout = float(common.args.timeout) / float(1000)
+    def execute(self):
+        # Put the radio in sniffer mode (ESB w/o auto ACKs)
+        self.radio.enter_sniffer_mode(self.address)
 
-# Parse the ping payload
-ping_payload = common.args.ping_payload.replace(':', '').decode('hex')
+        # Sweep through the channels and decode ESB packets in pseudo-promiscuous mode
+        last_ping = time.time()
+        channel_index = 0
+        while True:
 
-# Format the ACK timeout and auto retry values
-ack_timeout = int(common.args.ack_timeout / 250) - 1
-ack_timeout = max(0, min(ack_timeout, 15))
-retries = max(0, min(common.args.retries, 15))
+            # Follow the target device if it changes channels
+            if time.time() - last_ping > self.timeout:
 
-# Sweep through the channels and decode ESB packets in pseudo-promiscuous mode
-last_ping = time.time()
-channel_index = 0
-while True:
+                # First try pinging on the active channel
+                if not self.radio.transmit_payload(self.ping_payload, self.ack_timeout, self.retries):
 
-  # Follow the target device if it changes channels
-  if time.time() - last_ping > timeout:
+                    # Ping failed on the active channel, so sweep through all available channels
+                    success = False
+                    for channel_index in range(len(self.channels)):
+                        self.radio.set_channel(self.channels[channel_index])
+                        if self.radio.transmit_payload(self.ping_payload, self.ack_timeout, self.retries):
+                            # Ping successful, exit out of the ping sweep
+                            last_ping = time.time()
+                            logging.debug('Ping success on channel {0}'.format(self.channels[channel_index]))
+                            success = True
+                            break
 
-    # First try pinging on the active channel
-    if not common.radio.transmit_payload(ping_payload, ack_timeout, retries):
+                    # Ping sweep failed
+                    if not success:
+                        logging.debug('Unable to ping {0}'.format(self.address_string))
 
-      # Ping failed on the active channel, so sweep through all available channels
-      success = False
-      for channel_index in range(len(common.channels)):
-        common.radio.set_channel(common.channels[channel_index])
-        if common.radio.transmit_payload(ping_payload, ack_timeout, retries):
+                # Ping succeeded on the active channel
+                else:
+                    logging.debug('Ping success on channel {0}'.format(self.channels[channel_index]))
+                    last_ping = time.time()
 
-          # Ping successful, exit out of the ping sweep
-          last_ping = time.time()
-          logging.debug('Ping success on channel {0}'.format(common.channels[channel_index]))
-          success = True
-          break
+            # Receive payloads
+            value = self.radio.receive_payload()
+            if value[0] == 0:
+                # Reset the channel timer
+                last_ping = time.time()
 
-      # Ping sweep failed
-      if not success: logging.debug('Unable to ping {0}'.format(address_string))
+                # Split the payload from the status byte
+                payload = value[1:]
 
-    # Ping succeeded on the active channel
-    else:
-      logging.debug('Ping success on channel {0}'.format(common.channels[channel_index]))
-      last_ping = time.time()
+                # Log the packet
+                logging.info('{0: >2}  {1: >2}  {2}  {3}'.format(
+                    self.channels[channel_index],
+                    len(payload),
+                    self.address_string,
+                    ':'.join('{:02X}'.format(b) for b in payload)))
 
-  # Receive payloads
-  value = common.radio.receive_payload()
-  if value[0] == 0:
 
-    # Reset the channel timer
-    last_ping = time.time()
-
-    # Split the payload from the status byte
-    payload = value[1:]
-
-    # Log the packet
-    logging.info('{0: >2}  {1: >2}  {2}  {3}'.format(
-              common.channels[channel_index],
-              len(payload),
-              address_string,
-              ':'.join('{:02X}'.format(b) for b in payload)))
-
+if __name__ == "__main__":
+    Nrf24Sniffer().execute()
