@@ -12,26 +12,11 @@
   GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import logging
 import usb
-
-# Check pyusb dependency
-try:
-    from usb import core as _usb_core
-except ImportError as ex:
-    print('''
-------------------------------------------
-| PyUSB was not found or is out of date. |
-------------------------------------------
-
-Please update PyUSB using pip:
-
-sudo pip install -U -I pip && sudo pip install -U -I pyusb
-''')
-    exit(1)
 
 # USB commands
 TRANSMIT_PAYLOAD = 0x04
@@ -55,6 +40,27 @@ RF_RATE_1M = 1
 RF_RATE_2M = 2
 
 
+def _check_pyusb():
+    # Check pyusb dependency
+    try:
+        from usb import core as _usb_core
+    except ImportError:
+        print('''
+    ------------------------------------------
+    | PyUSB was not found or is out of date. |
+    ------------------------------------------
+
+    Please update PyUSB using pip:
+
+    sudo pip install -U -I pip && sudo pip install -U -I pyusb
+    ''')
+        exit(1)
+
+
+# Actually run the check
+_check_pyusb()
+
+
 # nRF24LU1+ radio dongle
 class Nrf24:
     # Sufficiently long timeout for use in a VM
@@ -74,7 +80,7 @@ class Nrf24:
     def enter_promiscuous_mode(self, prefix=None):
         if prefix is None:
             prefix = []
-        self.send_usb_command(ENTER_PROMISCUOUS_MODE, [len(prefix)] + map(ord, prefix))
+        self.send_usb_command(ENTER_PROMISCUOUS_MODE, [len(prefix)] + list(prefix))
         self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)
         if len(prefix) > 0:
             logging.debug('Entered promiscuous mode with address prefix {0}'.
@@ -83,8 +89,10 @@ class Nrf24:
             logging.debug('Entered promiscuous mode')
 
     # Put the radio in pseudo-promiscuous mode without CRC checking
-    def enter_promiscuous_mode_generic(self, prefix=[], rate=RF_RATE_2M, payload_length=32):
-        self.send_usb_command(ENTER_PROMISCUOUS_MODE_GENERIC, [len(prefix), rate, payload_length] + map(ord, prefix))
+    def enter_promiscuous_mode_generic(self, prefix=None, rate=RF_RATE_2M, payload_length=32):
+        if prefix is None:
+            prefix = []
+        self.send_usb_command(ENTER_PROMISCUOUS_MODE_GENERIC, [len(prefix), rate, payload_length] + list(prefix))
         self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)
         if len(prefix) > 0:
             logging.debug('Entered generic promiscuous mode with address prefix {0}'.
@@ -112,25 +120,26 @@ class Nrf24:
 
     # Transmit a generic (non-ESB) payload
     def transmit_payload_generic(self, payload, address="\x33\x33\x33\x33\x33"):
-        data = [len(payload), len(address)] + map(ord, payload) + map(ord, address)
+        data = [len(payload), len(address)] + list(payload) + list(address)
         self.send_usb_command(TRANSMIT_PAYLOAD_GENERIC, data)
         return self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)[0] > 0
 
     # Transmit an ESB payload
     def transmit_payload(self, payload, timeout=4, retransmits=15):
-        data = [len(payload), timeout, retransmits] + map(ord, payload)
+        data = [len(payload), timeout, retransmits] + list(payload)
         self.send_usb_command(TRANSMIT_PAYLOAD, data)
         return self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)[0] > 0
 
     # Transmit an ESB ACK payload
     def transmit_ack_payload(self, payload):
-        data = [len(payload)] + map(ord, payload)
+        data = [len(payload)] + list(payload)
         self.send_usb_command(TRANSMIT_ACK_PAYLOAD, data)
         return self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)[0] > 0
 
     # Set the RF channel
     def set_channel(self, channel):
-        if channel > 125: channel = 125
+        if channel > 125:
+            channel = 125
         self.send_usb_command(SET_CHANNEL, [channel])
         self.dongle.read(0x81, 64, timeout=Nrf24.usb_timeout)
         logging.debug('Tuned to {0}'.format(channel))
