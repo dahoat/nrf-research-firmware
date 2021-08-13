@@ -27,7 +27,7 @@ class Nrf24Scanner(Nrf24Base):
         super(Nrf24Scanner, self).__init__('./nrf24-scanner.py')
 
         # Parse command line arguments and initialize the radio
-        self.enable_prefix()
+        self.enable_prefix_address()
         self.enable_dwell_time()
         self.parse_and_init()
         
