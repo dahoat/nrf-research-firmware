@@ -43,9 +43,6 @@ class Nrf24Base:
     parser = None
     radio = None
 
-    address_enabled = False
-    _address = None
-
     optional_attributes = {
         'address': {
             'enabled': False,
@@ -202,8 +199,8 @@ class Nrf24Base:
         logging.basicConfig(level=level, format='[%(asctime)s.%(msecs)03d]  %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
 
         # Set the channels
-        channels = self.args.channels
-        logging.debug('Using channels {0}'.format(', '.join(str(c) for c in channels)))
+        self.channels = self.args.channels
+        logging.debug('Using channels {0}'.format(', '.join(str(c) for c in self.channels)))
 
         # Initialize the radio
         self.radio = Nrf24(self.args.index)
